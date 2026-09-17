@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+
+<html lang="en"> <head> <meta charset="UTF-8"> <title>ShellScrap</title> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <link rel="preconnect" href="https://fonts.googleapis.com"> <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=VT323&display=swap" rel="stylesheet"> <style> :root { --bg: #0b0d0a; --bg-raised: #12150f; --amber: #ffb000; --amber-dim: #8a5c00; --amber-bright: #ffd166; --green: #7fd68a; --red: #ff6b5e; --line: #2a2318; --text-body: #d9c9a3; }
+
+{ box-sizing: border-box; }
+
+html, body {
+margin: 0;
+padding: 0;
+height: 100%;
+background: var(--bg);
+overflow: hidden;
+}
+
+body {
+font-family: 'IBM Plex Mono', monospace;
+color: var(--text-body);
+display: flex;
+align-items: center;
+justify-content: center;
+padding: 24px;
+}
+
+.crt {
+position: relative;
+width: 100%;
+max-width: 860px;
+height: 88vh;
+max-height: 720px;
+background: var(--bg);
+border: 1px solid var(--line);
+border-radius: 4px;
+box-shadow:
+0 0 0 1px #000,
+0 40px 80px -30px rgba(0,0,0,0.8),
+0 0 60px -20px rgba(255,176,0,0.08);
+display: flex;
+flex-direction: column;
+overflow: hidden;
+}
+
+.crt::after {
+content: "";
+position: absolute;
+inset: 0;
+pointer-events: none;
+background: repeating-linear-gradient(
+to bottom,
+rgba(255,176,0,0.025) 0px,
+rgba(255,176,0,0.025) 1px,
+transparent 1px,
+transparent 3px
+);
+mix-blend-mode: overlay;
+opacity: 0.6;
+}
+
+.titlebar {
+flex: none;
+display: flex;
+align-items: baseline;
+justify-content: space-between;
+padding: 10px 18px 8px;
+border-bottom: 1px solid var(--line);
+background: var(--bg-raised);
+}
+
+.titlebar .brand {
+font-family: 'VT323', monospace;
+font-size: 26px;
+letter-spacing: 2px;
+color: var(--amber);
+text-shadow: 0 0 10px rgba(255,176,0,0.35);
+}
+
+.titlebar .meta {
+font-size: 11px;
+color: var(--amber-dim);
+}
+
+.output {
+flex: 1;
+overflow-y: auto;
+padding: 16px 18px;
+font-size: 13.5px;
+line-height: 1.55;
+scrollbar-width: thin;
+scrollbar-color: var(--amber-dim) transparent;
+}
+
+.output::-webkit-scrollbar { width: 8px; }
+.output::-webkit-scrollbar-thumb { background: var(--amber-dim); border-radius: 4px; }
+
+.line { white-space: pre-wrap; word-break: break-word; margin: 0 0 2px; }
+.line.cmd { color: var(--amber-bright); }
+.line.cmd::before { content: "notes> "; color: var(--amber-dim); }
+.line.info { color: var(--text-body); }
+.line.ok { color: var(--green); }
+.line.err { color: var(--red); }
+.line.dim { color: var(--amber-dim); }
+.line.head { color: var(--amber); font-weight: 600; }
+
+.note-row {
+display: block;
+padding: 3px 4px;
+border-radius: 2px;
+cursor: pointer;
+}
+.note-row .id { color: var(--amber-dim); }
+.note-row .tags { color: var(--green); }
+.note-row.selected {
+background: rgba(255,176,0,0.12);
+outline: 1px solid var(--amber-dim);
+}
+
+.inputbar {
+flex: none;
+display: flex;
+align-items: center;
+gap: 8px;
+padding: 10px 18px;
+border-top: 1px solid var(--line);
+background: var(--bg-raised);
+}
+
+.prompt {
+color: var(--amber);
+font-weight: 600;
+flex: none;
+}
+
+#cmdInput {
+flex: 1;
+background: transparent;
+border: none;
+outline: none;
+color: var(--amber-bright);
+font-family: 'IBM Plex Mono', monospace;
+font-size: 14px;
+caret-color: var(--amber);
+}
+
+#cmdInput::placeholder { color: var(--amber-dim); }
+
+.statusbar {
+flex: none;
+display: flex;
+justify-content: space-between;
+padding: 5px 18px;
+font-size: 11px;
+background: #060705;
+color: var(--amber-dim);
+border-top: 1px solid var(--line);
+}
+
+.statusbar .mode.normal { color: var(--green); }
+.statusbar .mode.insert { color: var(--amber-bright); }
+
+.flicker {
+animation: bootflicker 0.9s steps(1) 1;
+}
+@keyframes bootflicker {
+0% { opacity: 0; }
+10% { opacity: 0.6; }
+20% { opacity: 0.1; }
+35% { opacity: 0.8; }
+50% { opacity: 0.2; }
+70% { opacity: 1; }
+100% { opacity: 1; }
+}
+</style>
+
+</head> <body>
+
+<div class="crt flicker" id="crt"> <div class="titlebar"> <span class="brand">SHELLSCRAP</span> <span class="meta" id="dbMeta">local-first · indexeddb</span> </div> <div class="output" id="output" tabindex="-1"></div> <div class="inputbar"> <span class="prompt" id="promptChar">notes&gt;</span> <input id="cmdInput" type="text" autocomplete="off" spellcheck="false" placeholder="type 'help' to begin" /> </div> <div class="statusbar"> <span>-- <span class="mode insert" id="modeLabel">INSERT</span> --</span> <span id="statusRight">0 notes</span> </div> </div>
+
+<script> (() => { "use strict"; // ---------- IndexedDB layer ---------- const DB_NAME = "shellscrap_db"; const DB_VERSION = 1; const STORE = "notes"; let db = null; function openDB() { return new Promise((resolve, reject) => { const req = indexedDB.open(DB_NAME, DB_VERSION); req.onupgradeneeded = (e) => { const _db = e.target.result; if (!_db.objectStoreNames.contains(STORE)) { const store = _db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true }); store.createIndex("createdAt", "createdAt", { unique: false }); } }; req.onsuccess = (e) => resolve(e.target.result); req.onerror = (e) => reject(e.target.error); }); } function tx(mode) { return db.transaction(STORE, mode).objectStore(STORE); } function dbGetAll() { return new Promise((resolve, reject) => { const req = tx("readonly").getAll(); req.onsuccess = () => resolve(req.result.sort((a, b) => b.createdAt - a.createdAt)); req.onerror = () => reject(req.error); }); } function dbAdd(note) { return new Promise((resolve, reject) => { const req = tx("readwrite").add(note); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); } function dbPut(note) { return new Promise((resolve, reject) => { const req = tx("readwrite").put(note); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); } function dbDelete(id) { return new Promise((resolve, reject) => { const req = tx("readwrite").delete(id); req.onsuccess = () => resolve(); req.onerror = () => reject(req.error); }); } // ---------- App state ---------- let notes = []; let currentView = []; // ids currently listed (for j/k navigation) let selectedIndex = -1; let mode = "insert"; // "insert" | "normal" let pendingKey = null; // for gg / dd chords let pendingTimer = null; const output = document.getElementById("output"); const input = document.getElementById("cmdInput"); const modeLabel = document.getElementById("modeLabel"); const statusRight = document.getElementById("statusRight"); const dbMeta = document.getElementById("dbMeta"); function esc(s) { return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); } function printLine(text, cls = "info") { const div = document.createElement("div"); div.className = "line " + cls; div.innerHTML = text; output.appendChild(div); output.scrollTop = output.scrollHeight; } function printBlank() { printLine("", "info"); } function printCmd(text) { printLine(esc(text), "cmd"); } function updateStatus() { statusRight.textContent = `${notes.length} note${notes.length === 1 ? "" : "s"}` + (selectedIndex >= 0 ? ` · row ${selectedIndex + 1}/${currentView.length}` : ""); } function setMode(next) { mode = next; modeLabel.textContent = mode.toUpperCase(); modeLabel.className = "mode " + mode; if (mode === "insert") { input.focus(); } else { input.blur(); } } // ---------- Rendering helpers ---------- function fmtDate(ts) { const d = new Date(ts); return d.toLocaleDateString(undefined, { month: "short", day: "2-digit" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); } function renderList(list, heading) { currentView = list.map(n => n.id); selectedIndex = list.length ? 0 : -1; if (heading) printLine(esc(heading), "head"); if (!list.length) { printLine(" (nothing here)", "dim"); updateStatus(); return; } list.forEach((n, i) => { const preview = n.text.length > 54 ? n.text.slice(0, 54) + "…" : n.text; const tagStr = n.tags.length ? " #" + n.tags.join(" #") : ""; const row = document.createElement("div"); row.className = "note-row" + (i === selectedIndex ? " selected" : ""); row.dataset.idx = i; row.innerHTML = `<span class="id">[${n.id}]</span> ${esc(preview)}<span class="tags">${esc(tagStr)}</span> <span class="dim">· ${fmtDate(n.createdAt)}</span>`; row.addEventListener("click", () => { selectedIndex = i; highlightSelected(); showNote(n.id); }); output.appendChild(row); }); output.scrollTop = output.scrollHeight; updateStatus(); } function highlightSelected() { const rows = output.querySelectorAll(".note-row"); rows.forEach(r => r.classList.toggle("selected", Number(r.dataset.idx) === selectedIndex)); updateStatus(); } // ---------- Command parsing ---------- // Extract #tags from text, return { clean, tags } function extractTags(str) { const tags = []; const clean = str.replace(/#([a-zA-Z0-9_-]+)/g, (m, t) => { tags.push(t.toLowerCase()); return ""; }).replace(/\s+/g, " ").trim(); return { clean, tags: [...new Set(tags)] }; } async function refreshNotes() { notes = await dbGetAll(); } async function cmdNew(rawArgs) { const { clean, tags } = extractTags(rawArgs); if (!clean) { printLine("nothing to save — provide some note text.", "err"); return; } const note = { text: clean, tags, createdAt: Date.now(), updatedAt: Date.now(), }; const id = await dbAdd(note); await refreshNotes(); printLine(`saved as [${id}]${tags.length ? " #" + tags.join(" #") : ""}`, "ok"); currentView = [id]; selectedIndex = 0; updateStatus(); } function findNote(id) { return notes.find(n => n.id === Number(id)); } async function cmdList(arg) { let list = notes; let heading = `all notes (${notes.length})`; if (arg) { const tag = arg.replace(/^#/, "").toLowerCase(); list = notes.filter(n => n.tags.includes(tag)); heading = `notes tagged #${tag} (${list.length})`; } renderList(list, heading); } function cmdShowById(id) { const n = findNote(id); if (!n) { printLine(`no note with id [${id}]`, "err"); return; } showNote(n.id); } function showNote(id) { const n = findNote(id); if (!n) return; printLine(`[${n.id}] ${fmtDate(n.createdAt)}${n.updatedAt !== n.createdAt ? " (edited " + fmtDate(n.updatedAt) + ")" : ""}`, "head"); printLine(esc(n.text), "info"); if (n.tags.length) printLine(" #" + n.tags.join(" #"), "dim"); printBlank(); } async function cmdEdit(id, newText) { const n = findNote(id); if (!n) { printLine(`no note with id [${id}]`, "err"); return; } const { clean, tags } = extractTags(newText); if (!clean) { printLine("edit needs replacement text.", "err"); return; } n.text = clean; if (tags.length) n.tags = tags; n.updatedAt = Date.now(); await dbPut(n); await refreshNotes(); printLine(`[${id}] updated.`, "ok"); } async function cmdTag(id, op, tagName) { const n = findNote(id); if (!n) { printLine(`no note with id [${id}]`, "err"); return; } const t = tagName.replace(/^#/, "").toLowerCase(); if (op === "+") { if (!n.tags.includes(t)) n.tags.push(t); printLine(`[${id}] tagged #${t}`, "ok"); } else if (op === "-") { n.tags = n.tags.filter(x => x !== t); printLine(`[${id}] untagged #${t}`, "ok"); } n.updatedAt = Date.now(); await dbPut(n); await refreshNotes(); } async function cmdDelete(id) { const n = findNote(id); if (!n) { printLine(`no note with id [${id}]`, "err"); return; } await dbDelete(Number(id)); await refreshNotes(); printLine(`[${id}] deleted.`, "ok"); selectedIndex = -1; currentView = []; updateStatus(); } function cmdSearch(query) { const q = query.toLowerCase().trim(); if (!q) { printLine("search needs a query.", "err"); return; } const list = notes.filter(n => n.text.toLowerCase().includes(q) || n.tags.some(t => t.includes(q)) ); renderList(list, `search "${query}" (${list.length} match${list.length === 1 ? "" : "es"})`); } function cmdTags() { const counts = {}; notes.forEach(n => n.tags.forEach(t => { counts[t] = (counts[t] || 0) + 1; })); const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]); printLine("tags", "head"); if (!entries.length) { printLine(" (no tags yet)", "dim"); return; } entries.forEach(([t, c]) => printLine(` #${t} ${"·".repeat(Math.min(c, 20))} ${c}`, "info")); } function cmdExport() { const payload = JSON.stringify(notes, null, 2); const blob = new Blob([payload], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "shellscrap-export.json"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); printLine(`exported ${notes.length} notes to shellscrap-export.json`, "ok"); } function printHelp() { printLine("commands", "head"); const rows = [ ["new <text> [#tag ...]", "create a note (bare text also works)"], ["ls | list [#tag]", "list all notes, or filter by tag"], ["show <id>", "show a note in full"], ["find <query> | search <query>", "search text and tags"], ["edit <id> <text> [#tag ...]", "replace a note's text (and tags, if given)"], ["tag <id> +<tag>", "add a tag to a note"], ["tag <id> -<tag>", "remove a tag from a note"], ["rm <id> | del <id>", "delete a note"], ["tags", "list all tags with counts"], ["export", "download all notes as JSON"], ["clear", "clear the screen"], ["help", "show this message"], ]; rows.forEach(([c, d]) => printLine(` ${c.padEnd(30)} ${d}`, "info")); printBlank(); printLine("vim-style keys (press Esc to leave INSERT mode)", "head"); const keys = [ ["i", "enter INSERT mode, focus the command line"], ["Esc", "return to NORMAL mode"], ["j / k", "move selection down / up in the last list"], ["gg / G", "jump to top / bottom of the list"], ["Enter", "open the selected note"], ["dd", "delete the selected note"], ["/", "jump to INSERT mode with 'find ' pre-filled"], ]; keys.forEach(([c, d]) => printLine(` ${c.padEnd(30)} ${d}`, "info")); printBlank(); } // ---------- Command dispatch ---------- async function runCommand(raw) { const trimmed = raw.trim(); if (!trimmed) return; printCmd(trimmed); const spaceIdx = trimmed.indexOf(" "); const cmd = (spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx)).toLowerCase(); const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim(); try { switch (cmd) { case "help": case "?": printHelp(); break; case "new": case "add": await cmdNew(rest); break; case "ls": case "list": await cmdList(rest); break; case "show": case "view": if (!rest) { printLine("usage: show <id>", "err"); break; } cmdShowById(rest); break; case "find": case "search": cmdSearch(rest); break; case "edit": { const m = rest.match(/^(\d+)\s+([\s\S]+)$/); if (!m) { printLine("usage: edit <id> <new text>", "err"); break; } await cmdEdit(m[1], m[2]); break; } case "tag": { const m = rest.match(/^(\d+)\s+([+-])\s*([a-zA-Z0-9_-]+)$/); if (!m) { printLine("usage: tag <id> +tagname or tag <id> -tagname", "err"); break; } await cmdTag(m[1], m[2], m[3]); break; } case "rm": case "del": case "delete": if (!rest || !/^\d+$/.test(rest)) { printLine("usage: rm <id>", "err"); break; } await cmdDelete(rest); break; case "tags": cmdTags(); break; case "export": cmdExport(); break; case "clear": case "cls": output.innerHTML = ""; break; default: // Bare text: quick-capture as a new note. await cmdNew(trimmed); break; } } catch (err) { printLine("error: " + esc(err.message || String(err)), "err"); } } // ---------- Input handling ---------- input.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); setMode("normal"); return; } if (e.key === "Enter") { e.preventDefault(); const val = input.value; input.value = ""; runCommand(val); } }); // Global normal-mode key handling document.addEventListener("keydown", (e) => { if (mode !== "normal") return; if (document.activeElement === input) return; const key = e.key; // chord handling for gg / dd if (pendingKey) { clearTimeout(pendingTimer); const chord = pendingKey + key; pendingKey = null; if (chord === "gg") { e.preventDefault(); if (currentView.length) { selectedIndex = 0; highlightSelected(); scrollSelectedIntoView(); } return; } if (chord === "dd") { e.preventDefault(); if (selectedIndex >= 0 && currentView[selectedIndex] != null) { cmdDelete(currentView[selectedIndex]).then(() => { cmdList().then(() => {}); // no-op, list already refreshed by delete }); } return; } // fall through to normal single-key handling for the second key } switch (key) { case "i": e.preventDefault(); setMode("insert"); break; case "/": e.preventDefault(); setMode("insert"); input.value = "find "; input.setSelectionRange(input.value.length, input.value.length); break; case "j": e.preventDefault(); if (currentView.length) { selectedIndex = Math.min(selectedIndex + 1, currentView.length - 1); highlightSelected(); scrollSelectedIntoView(); } break; case "k": e.preventDefault(); if (currentView.length) { selectedIndex = Math.max(selectedIndex - 1, 0); highlightSelected(); scrollSelectedIntoView(); } break; case "G": e.preventDefault(); if (currentView.length) { selectedIndex = currentView.length - 1; highlightSelected(); scrollSelectedIntoView(); } break; case "Enter": e.preventDefault(); if (selectedIndex >= 0 && currentView[selectedIndex] != null) { showNote(currentView[selectedIndex]); } break; case "g": case "d": pendingKey = key; pendingTimer = setTimeout(() => { pendingKey = null; }, 500); break; default: break; } }); function scrollSelectedIntoView() { const row = output.querySelector(`.note-row[data-idx="${selectedIndex}"]`); if (row) row.scrollIntoView({ block: "nearest" }); } // Clicking the terminal body refocuses input if in insert mode output.addEventListener("click", () => { if (mode === "insert") input.focus(); }); document.getElementById("crt").addEventListener("click", (e) => { if (mode === "insert" && e.target === document.getElementById("crt")) input.focus(); }); // ---------- Boot ---------- async function boot() { try { db = await openDB(); dbMeta.textContent = "local-first · indexeddb · connected"; } catch (err) { dbMeta.textContent = "local-first · indexeddb · unavailable"; printLine("warning: IndexedDB unavailable in this browser — notes will not persist.", "err"); } printLine("SHELLSCRAP v1.0 — local-first terminal notes", "head"); printLine("all data stays in this browser, in IndexedDB. nothing leaves your device.", "dim"); printBlank(); if (db) { await refreshNotes(); if (notes.length) { renderList(notes.slice(0, 8), `welcome back — ${notes.length} note${notes.length === 1 ? "" : "s"} on file`); if (notes.length > 8) printLine(` … and ${notes.length - 8} more. type 'ls' to see all.`, "dim"); } else { printLine("no notes yet. try: new buy oat milk #errands", "info"); } } printBlank(); printLine("type 'help' for commands, or Esc for vim-style navigation.", "dim"); printBlank(); setMode("insert"); } boot(); })(); </script>
+
+</body> </html>
+
